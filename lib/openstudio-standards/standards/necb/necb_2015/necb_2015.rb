@@ -45,4 +45,10 @@ class NECB2015 < NECB2011
     end
     return @standards_data
   end
+
+  #Does not alter lighting; lighting occupancy sensors applied using lighting schedule, see apply_lighting_schedule method NECB 2015
+  def set_occ_sensor_spacetypes(model, space_type_map)
+    return true
+  end
+
 end
