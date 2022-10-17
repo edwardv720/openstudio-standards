@@ -7,7 +7,7 @@ class Standard
   #
   # @param coil_heating_dx_single_speed [OpenStudio::Model::CoilHeatingDXSingleSpeed] coil heating dx single speed object
   # @return [Double] capacity in W to be used for find object
-  def coil_heating_dx_single_speed_find_capacity(coil_heating_dx_single_speed)
+  def coil_heating_dx_single_speed_find_capacity(coil_heating_dx_single_speed, necb_reference_hp:false)
     capacity_w = nil
 
     # Get the paired cooling coil

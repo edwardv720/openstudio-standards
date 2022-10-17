@@ -85,7 +85,7 @@ module CoilDX
   # @param coil_dx [OpenStudio::Model::StraightComponent] coil cooling object, allowable types:
   #   CoilCoolingDXSingleSpeed, CoilCoolingDXTwoSpeed, CoilCoolingDXMultiSpeed
   # @return [String] the heating type
-  def coil_dx_heating_type(coil_dx)
+  def coil_dx_heating_type(coil_dx, necb_reference_hp:false)
     htg_type = nil
 
     # If Unitary or Zone HVAC
