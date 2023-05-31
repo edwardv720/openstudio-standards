@@ -1,14 +1,13 @@
 {
-  "tables": [
-    {
-      "name": "boilers",
+  "tables": {
+    "boilers": {
       "data_type": "table",
       "refs": [
         "assumption"
       ],
       "table": [
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Gas",
           "condensing": null,
@@ -24,7 +23,7 @@
           "notes": "From NECB 2011"
         },
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Gas",
           "condensing": null,
@@ -40,7 +39,7 @@
           "notes": "From NECB 2011"
         },
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Gas",
           "condensing": null,
@@ -56,7 +55,7 @@
           "notes": "From NECB 2011"
         },
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Electric",
           "condensing": null,
@@ -72,7 +71,7 @@
           "notes": "From NECB 2011"
         },
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Oil",
           "condensing": null,
@@ -88,7 +87,7 @@
           "notes": "From NECB 2011"
         },
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Oil",
           "condensing": null,
@@ -104,7 +103,7 @@
           "notes": "From NECB 2011"
         },
         {
-          "template": "NECB2015",
+          
           "fluid_type": "Hot Water",
           "fuel_type": "Oil",
           "condensing": null,
@@ -121,5 +120,5 @@
         }
       ]
     }
-  ]
+  }
 }

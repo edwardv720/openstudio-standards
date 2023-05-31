@@ -1,48 +1,39 @@
 require 'fileutils'
+require 'erb'
 module CITestGenerator
   # default loation circleci_tests.txt file when run on
   @@ci_test_path = File.absolute_path(File.join(__FILE__, "..", "..", "circleci_tests.txt"))
   @@local_ci_test_path = File.absolute_path(File.join(__FILE__, "..", "..", "local_circleci_tests.txt"))
+  @@file_out_dir = File.absolute_path(File.join(__FILE__, "..", "..", "ci_test_files"))
+  @@doe_dir = File.absolute_path(File.join(__FILE__, "..", "..", "doe_prototype"))
 
-  #:@return [String] Path of the directory where the test files are written
-  def self.file_out_dir
-    File.absolute_path(File.join(__FILE__,"..","..","ci_test_files"))
+  def self.remove_folders(dirname)
+    if File.directory?(dirname)
+      puts "Removing directory : [#{dirname}]"
+      FileUtils.rm_r(dirname)
+    end
   end
 
-  #:@return [String] Path of the doe_prototype directory
-  # used to copy the models directory present within the doe_prototype directory
-  def self.doe_dir
-    File.absolute_path(File.join(__FILE__,"..","..","doe_prototype"))
-  end
 
   # Method that is used to delete output directories, and recreate the folder
   # that will have the test files written
   def self.cleanup_output_folders
-    dirname = File.join(file_out_dir(), 'output')
-    if File.directory?(dirname)
-      puts "Removing hvac output directory : [#{dirname}]"
-      FileUtils.rm_r(dirname)
-    end
-    necb_out_dirname = File.absolute_path(File.join(__FILE__,"..","..","necb", 'output'))
-    if File.directory?(necb_out_dirname)
-      puts "Removing necb output directory : [#{necb_out_dirname}]"
-      FileUtils.rm_r(necb_out_dirname)
-    end
-    nrel_out_dirname = File.absolute_path(File.join(__FILE__,"..","..","..", 'output'))
-    if File.directory?(nrel_out_dirname)
-      puts "Removing nrel output directory : [#{nrel_out_dirname}]"
-      FileUtils.rm_r(nrel_out_dirname)
-    end
-    if File.directory?(file_out_dir())
-      puts "Removing and recreating ci_test_files directory : [#{file_out_dir()}]"
-      FileUtils.rm_r(file_out_dir())
-    end
-    FileUtils.mkdir_p(file_out_dir())
+    self.remove_folders(File.join(@@file_out_dir, 'output'))
+    remove_folders(File.absolute_path(File.join(__FILE__, "..", "..", "necb", 'output')))
+    remove_folders(File.absolute_path(File.join(__FILE__, "..", "..", "necb", 'output')))
+    remove_folders(File.absolute_path(File.join(__FILE__, "..", "..", "..", 'output')))
+    FileUtils.mkdir_p(@@file_out_dir)
   end
 
   # Method that will generate the necb building test files.
   def self.generate_necb_bldg_test_files
-    templates = ['NECB2011', 'NECB2015']
+    templates = [
+        'BTAPPRE1980',
+        'BTAP1980TO2010',
+        'NECB2011',
+        'NECB2015',
+        'NECB2017'
+    ]
     building_types = [
         "FullServiceRestaurant",
         "HighriseApartment",
@@ -61,47 +52,23 @@ module CITestGenerator
         "SmallOffice",
         "Warehouse"
     ]
-    fuel_types = ['gas', 'electric']
-    out_dir = file_out_dir()
+    fuel_types = ['gas',
+                  'electric']
+    #load regression necb template
+    necb_bldg_template = File.read("/home/osdev/openstudio-standards/test/necb/templates/test_necb_building_template.erb")
     templates.each {|template|
       building_types.each {|building_type|
         fuel_types.each {|fuel_type|
-          filename = File.join(out_dir,"test_necb_bldg_#{building_type}_#{template}_#{fuel_type}.rb")
-          file_string =%Q{
-require_relative '../helpers/minitest_helper'
-require_relative '../helpers/create_doe_prototype_helper'
-require_relative '../helpers/compare_models_helper'
-require_relative '../necb/regression_helper'
-
-class Test_#{building_type}_#{template}_#{fuel_type} < NECBRegressionHelper
-  def setup()
-    super()
-  end
-  def test_#{template}_#{building_type}_regression_#{fuel_type}()
-
-    result, diff = create_model_and_regression_test(building_type: '#{building_type}',
-                                                   epw_file: @#{fuel_type}_location,
-                                                   template: '#{template}'
-    )
-    if result == false
-      puts "JSON terse listing of diff-errors."
-      puts diff
-      puts "Pretty listing of diff-errors for readability."
-      puts JSON.pretty_generate( diff )
-      puts "You can find the saved json diff file here test/necb/regression_models/#{building_type}-#{template}-#\{@#{fuel_type}_location\}.epw_diffs.json"
-    end
-    assert(result, diff)
-  end
-end
-}
-          File.open(filename, 'w') { |file| file.write(file_string) }
+          filename = File.join(@@file_out_dir, "test_necb_bldg_#{building_type}_#{template}_#{fuel_type}.rb")
+          file_string = ERB.new(necb_bldg_template, 0, "", "@html").result(binding)
+          File.open(filename, 'w') {|file| file.write(file_string)}
         }
       }
     }
   end
 
   #:@param local_run [Boolean] set to true if the run is a local run
-  def self.write_file_path_to_ci_tests_txt(local_run , verbose)
+  def self.write_file_path_to_ci_tests_txt(local_run, verbose)
     circleci_tests_txt_path = @@ci_test_path # use the default location os the circleci_tests.txt
 
     # if the run is a local, make a copy of the default circleci_tests.txt, and rename it
@@ -119,7 +86,7 @@ end
     # remove lines which contains the test_necb_bldg_*.rb, or other
     # test files that this module auto-generates.
     files.each_with_index {|line, i|
-      if  line.include?("necb/test_necb_bldg_") or \
+      if line.include?("necb/test_necb_bldg_") or \
         line.include?("necb/test_necb_hvac") or \
         line.include?("doe_prototype/test_add_hvac_systems") or \
         line.include?("doe_prototype/test_full_service_restaurant.rb") or \
@@ -146,53 +113,66 @@ end
     }
 
     # overwrite circleci_tests.txt without the test_necb_bldg_*.rb lines
-    File.open(circleci_tests_txt_path, 'w') { |f|
+    File.open(circleci_tests_txt_path, 'w') {|f|
       new_file_content.each {|line|
         f.puts line if verbose
       }
     }
 
     # add the new nrcan files generated by this script to the circleci_tests.txt
-    File.open(circleci_tests_txt_path, 'a') { |f|
-      files_path = File.expand_path(File.join(__FILE__,"..","..","ci_test_files", "test_necb_*.rb"))
+    File.open(circleci_tests_txt_path, 'a') {|f|
+      files_path = File.expand_path(File.join(__FILE__, "..", "..", "ci_test_files", "test_necb_*.rb"))
       puts files_path if verbose
       Dir[files_path].sort.each {|path|
-        f.puts(path.to_s.gsub(/^.+(openstudio-standards\/test\/)/,''))
+        f.puts(path.to_s.gsub(/^.+(openstudio-standards\/test\/)/, ''))
       }
     }
 
     # add the new doe files generated by this script to the circleci_tests.txt
-    File.open(circleci_tests_txt_path, 'a') { |f|
-      files_path = File.expand_path(File.join(__FILE__,"..","..","ci_test_files", "doe_test*.rb"))
+    File.open(circleci_tests_txt_path, 'a') {|f|
+      files_path = File.expand_path(File.join(__FILE__, "..", "..", "ci_test_files", "doe_test*.rb"))
       puts files_path if verbose
       Dir[files_path].sort.each {|path|
-        f.puts(path.to_s.gsub(/^.+(openstudio-standards\/test\/)/,''))
+        f.puts(path.to_s.gsub(/^.+(openstudio-standards\/test\/)/, ''))
       }
     }
   end
 
   # This method copies the model directory used ny necb hvac tests
   def self.copy_model_files_for_hvac_tests
-    out_dir = file_out_dir()
+    out_dir = @@file_out_dir
     model_dir = File.join(out_dir, 'models')
     FileUtils.mkpath(model_dir)
-    FileUtils.copy_entry( File.absolute_path(File.join(__dir__, "..", "necb", "models")), model_dir)
+    FileUtils.copy_entry(File.absolute_path(File.join(__dir__, "..", "necb", "models")), model_dir)
   end
 
   # This method copies the model directory used ny doe hvac tests
   def self.copy_doe_model_files_for_hvac_tests
-    model_dir = File.join(file_out_dir(), 'models')
+    model_dir = File.join(@@file_out_dir, 'models')
     FileUtils.mkpath(model_dir)
-    FileUtils.copy_entry( File.absolute_path(File.join(doe_dir(), "models")), model_dir)
+    FileUtils.copy_entry(File.absolute_path(File.join(@@doe_dir, "models")), model_dir)
   end
 
   # This method is used to generate NECB HVAC system 1 test
   def self.generate_hvac_sys1_files(verbose = true)
+    boiler_fueltypes = [
+        "NaturalGas",
+        "Electricity",
+        "FuelOil#2"
+    ]
+    mau_types = [
+        true,
+        false
+    ]
 
-    boiler_fueltypes = ["NaturalGas", "Electricity", "FuelOil#2"]
-    mau_types = [true, false]
-    mau_heating_coil_types = ["Hot Water", "Electric"]
-    baseboard_types = ["Hot Water", "Electric"]
+    mau_heating_coil_types = [
+        "Hot Water",
+        "Electric"
+    ]
+    baseboard_types = [
+        "Hot Water",
+        "Electric"
+    ]
 
     # iterate through variables
     boiler_fueltypes.each {|boiler_fueltype|
@@ -200,7 +180,7 @@ end
         mau_heating_coil_types.each {|mau_heating_coil_type|
           baseboard_types.each {|baseboard_type|
             # generate unique filename
-            filename = File.join(file_out_dir(),"test_necb_hvac_system_1-#{boiler_fueltype.snek}-#{mau_type.to_s.snek}-#{mau_heating_coil_type.snek}-#{baseboard_type.snek}.rb")
+            filename = File.join(@@file_out_dir, "test_necb_hvac_system_1-#{boiler_fueltype.snek}-#{mau_type.to_s.snek}-#{mau_heating_coil_type.snek}-#{baseboard_type.snek}.rb")
             puts filename if verbose
             file_string = %q{
 require_relative '../helpers/minitest_helper'
@@ -271,16 +251,17 @@ class NECB_HVAC_System_1_Test < MiniTest::Test
                 BTAP::Environment::WeatherFile.new(WEATHER_FILE).set_weather_file(model)
                 if (baseboard_type == "Hot Water") || (mau_heating_coil_type == "Hot Water")
                   hw_loop = OpenStudio::Model::PlantLoop.new(model)
-                  BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+                  standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
                 end
-                BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys1(
-                    model,
-                    model.getThermalZones,
-                    boiler_fueltype,
-                    mau_type,
-                    mau_heating_coil_type,
-                    baseboard_type,
-                    hw_loop)
+                standard.add_sys1_unitary_ac_baseboard_heating( model: model,
+                                                                zones: model.getThermalZones,
+                                                                mau_type: mau_type,
+                                                                mau_heating_coil_type: mau_heating_coil_type,
+                                                                baseboard_type: baseboard_type,
+                                                                hw_loop: hw_loop)
+
+
+
                 #Save the model after btap hvac.
                 BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
                 #run the standards
@@ -296,16 +277,14 @@ class NECB_HVAC_System_1_Test < MiniTest::Test
               BTAP::Environment::WeatherFile.new(WEATHER_FILE).set_weather_file(model)
               if (baseboard_type == "Hot Water")
                 hw_loop = OpenStudio::Model::PlantLoop.new(model)
-                BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+                standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
               end
-              BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys1(
-                  model,
-                  model.getThermalZones,
-                  boiler_fueltype,
-                  mau_type,
-                  "Electric", #value will not be used.
-                  baseboard_type,
-                  hw_loop)
+              standard.add_sys1_unitary_ac_baseboard_heating( model: model,
+                  zones: model.getThermalZones,
+                  mau_type: mau_type,
+                  mau_heating_coil_type: "Electric",
+                  baseboard_type: baseboard_type,
+                  hw_loop: hw_loop)
               #Save the model after btap hvac.
               BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
 
@@ -317,6 +296,15 @@ class NECB_HVAC_System_1_Test < MiniTest::Test
 
             end
             result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
+            warnings = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='0' ").get
+            fatal = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='2' ").get
+            severe = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='1' ").get
+            if severe.size > 0 or fatal.size > 0
+              puts "#############################ERRORS########################################"
+              puts severe
+              puts fatal
+              result = false
+            end
             assert_equal(true, result, "Failure in Standards for #{name}")
           end
         end
@@ -364,7 +352,7 @@ end}
             file_string['$(baseboard_types_snake)'] = baseboard_type.to_s.snek
 
             # write file
-            File.open(filename, 'w') { |file| file.write(file_string) }
+            File.open(filename, 'w') {|file| file.write(file_string)}
           }
         }
       }
@@ -382,7 +370,7 @@ end}
       chiller_types.each {|chiller_type|
         mua_cooling_types.each {|mua_cooling_type|
           # generate unique filename
-          filename = File.join(file_out_dir(),"test_necb_hvac_system_2_#{boiler_fueltype.snek}-#{chiller_type.to_s.snek}-#{mua_cooling_type.snek}.rb")
+          filename = File.join(@@file_out_dir, "test_necb_hvac_system_2_#{boiler_fueltype.snek}-#{chiller_type.to_s.snek}-#{mua_cooling_type.snek}.rb")
           puts filename if verbose
           file_string = %q{require_relative '../helpers/minitest_helper'
 require_relative '../helpers/create_doe_prototype_helper'
@@ -439,14 +427,17 @@ class NECB_HVAC_System_2_Test < MiniTest::Test
             model = BTAP::FileIO::load_osm("#{File.dirname(__FILE__)}/models/5ZoneNoHVAC.osm")
             BTAP::Environment::WeatherFile.new(WEATHER_FILE).set_weather_file(model)
             hw_loop = OpenStudio::Model::PlantLoop.new(model)
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys2(
-                model,
-                model.getThermalZones,
-                boiler_fueltype,
-                chiller_type,
-                mua_cooling_type,
-                hw_loop)
+            standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+            standard.add_sys2_FPFC_sys5_TPFC(model: model,
+                                  zones: model.getThermalZones,
+                                  chiller_type: chiller_type,
+                                  fan_coil_type: 'FPFC',
+                                  mau_cooling_type: mua_cooling_type,
+                                  hw_loop: hw_loop)
+
+
+
+
             #Save the model after btap hvac.
             BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
             result = run_the_measure(model, standard, "#{output_folder}/#{name}/sizing")
@@ -455,6 +446,15 @@ class NECB_HVAC_System_2_Test < MiniTest::Test
             assert_equal(true, result, "Failure in Standards for #{name}")
             #Run Sims
             result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
+            warnings = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='0' ").get
+            fatal = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='2' ").get
+            severe = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='1' ").get
+            if severe.size > 0 or fatal.size > 0
+              puts "#############################ERRORS########################################"
+              puts severe
+              puts fatal
+              result = false
+            end
             assert_equal(true, result, "Failure in Standards for #{name}")
           end
         end
@@ -498,7 +498,7 @@ end
           file_string['$(chiller_types_snake)'] = chiller_type.to_s.snek
           file_string['$(mua_cooling_types_snake)'] = mua_cooling_type.to_s.snek
 
-          File.open(filename, 'w') { |file| file.write(file_string) }
+          File.open(filename, 'w') {|file| file.write(file_string)}
         }
       }
     }
@@ -514,7 +514,7 @@ end
     boiler_fueltypes.each {|boiler_fueltype|
       baseboard_types.each {|baseboard_type|
         heating_coil_types_sys3.each {|heating_coil_type|
-          filename = File.join(file_out_dir(),"test_necb_hvac_system_3_#{boiler_fueltype.snek}-#{baseboard_type.to_s.snek}-#{heating_coil_type.snek}.rb")
+          filename = File.join(@@file_out_dir, "test_necb_hvac_system_3_#{boiler_fueltype.snek}-#{baseboard_type.to_s.snek}-#{heating_coil_type.snek}.rb")
           puts filename if verbose
           file_string = %q{
 require_relative '../helpers/minitest_helper'
@@ -571,15 +571,19 @@ class NECB_HVAC_System_3_Test < MiniTest::Test
             hw_loop = nil
             if (baseboard_type == "Hot Water")
               hw_loop = OpenStudio::Model::PlantLoop.new(model)
-              BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+              standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
             end
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys3(
-                model,
-                model.getThermalZones,
-                boiler_fueltype,
-                heating_coil_type_sys3,
-                baseboard_type,
-                hw_loop)
+            standard.add_sys3and8_single_zone_packaged_rooftop_unit_with_baseboard_heating_single_speed(
+                model: model,
+                zones: model.getThermalZones,
+                heating_coil_type: heating_coil_type_sys3,
+                baseboard_type: baseboard_type,
+                hw_loop: hw_loop)
+
+
+
+
+
             #Save the model after btap hvac.
             BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
             result = run_the_measure(model, standard, "#{output_folder}/#{name}/sizing")
@@ -588,6 +592,15 @@ class NECB_HVAC_System_3_Test < MiniTest::Test
             assert_equal(true, result, "Failure in Standards for #{name}")
             #Run Sims
             result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
+            warnings = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='0' ").get
+            fatal = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='2' ").get
+            severe = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='1' ").get
+            if severe.size > 0 or fatal.size > 0
+              puts "#############################ERRORS########################################"
+              puts severe
+              puts fatal
+              result = false
+            end
             assert_equal(true, result, "Failure in Standards for #{name}")
           end
         end
@@ -631,7 +644,7 @@ end
           file_string['$(baseboard_types_snake)'] = baseboard_type.to_s.snek
           file_string['$(heating_coil_type_snake)'] = heating_coil_type.to_s.snek
 
-          File.open(filename, 'w') { |file| file.write(file_string) }
+          File.open(filename, 'w') {|file| file.write(file_string)}
         }
       }
     }
@@ -647,7 +660,7 @@ end
     boiler_fueltypes.each {|boiler_fueltype|
       baseboard_types.each {|baseboard_type|
         heating_coil_types_sys4.each {|heating_coil_type|
-          filename = File.join(file_out_dir(),"test_necb_hvac_system_4_#{boiler_fueltype.snek}-#{baseboard_type.to_s.snek}-#{heating_coil_type.snek}.rb")
+          filename = File.join(@@file_out_dir, "test_necb_hvac_system_4_#{boiler_fueltype.snek}-#{baseboard_type.to_s.snek}-#{heating_coil_type.snek}.rb")
           puts filename if verbose
 
           file_string = %q{require_relative '../helpers/minitest_helper'
@@ -705,15 +718,14 @@ class NECB_HVAC_System_4_Test < MiniTest::Test
             hw_loop = nil
             if (baseboard_type == "Hot Water")
               hw_loop = OpenStudio::Model::PlantLoop.new(model)
-              BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+              standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
             end
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys4(
-                model,
-                model.getThermalZones,
-                boiler_fueltype,
-                heating_coil,
-                baseboard_type,
-                hw_loop)
+            standard.add_sys4_single_zone_make_up_air_unit_with_baseboard_heating(
+                model: model,
+                zones: model.getThermalZones,
+                heating_coil_type: heating_coil,
+                baseboard_type: baseboard_type,
+                hw_loop: hw_loop)
             #Save the model after btap hvac.
             BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
             result = run_the_measure(model, standard, "#{output_folder}/#{name}/sizing")
@@ -721,6 +733,15 @@ class NECB_HVAC_System_4_Test < MiniTest::Test
             BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.osm")
             assert_equal(true, result, "Failure in Standards for #{name}")
             result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
+            warnings = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='0' ").get
+            fatal = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='2' ").get
+            severe = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='1' ").get
+            if severe.size > 0 or fatal.size > 0
+              puts "#############################ERRORS########################################"
+              puts severe
+              puts fatal
+              result = false
+            end
             assert_equal(true, result, "Failure in Standards for #{name}")
           end
         end
@@ -765,7 +786,7 @@ end
           file_string['$(baseboard_types_snake)'] = baseboard_type.to_s.snek
           file_string['$(heating_coil_type_snake)'] = heating_coil_type.to_s.snek
 
-          File.open(filename, 'w') { |file| file.write(file_string) }
+          File.open(filename, 'w') {|file| file.write(file_string)}
         }
       }
     }
@@ -780,7 +801,7 @@ end
     boiler_fueltypes.each {|boiler_fueltype|
       chiller_types.each {|chiller_type|
         mua_cooling_types.each {|mua_cooling_type|
-          filename = File.join(file_out_dir(),"test_necb_hvac_system_5_#{boiler_fueltype.snek}-#{chiller_type.to_s.snek}-#{mua_cooling_type.snek}.rb")
+          filename = File.join(@@file_out_dir, "test_necb_hvac_system_5_#{boiler_fueltype.snek}-#{chiller_type.to_s.snek}-#{mua_cooling_type.snek}.rb")
           puts filename if verbose
           file_string = %q{
 require_relative '../helpers/minitest_helper'
@@ -839,14 +860,13 @@ class NECB_HVAC_System_5_Test < MiniTest::Test
             model = BTAP::FileIO::load_osm("#{File.dirname(__FILE__)}/models/5ZoneNoHVAC.osm")
             BTAP::Environment::WeatherFile.new(WEATHER_FILE).set_weather_file(model)
             hw_loop = OpenStudio::Model::PlantLoop.new(model)
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys5(
-                model,
-                model.getThermalZones,
-                boiler_fueltype,
-                chiller_type,
-                mua_cooling_type,
-                hw_loop)
+            standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+            standard.add_sys2_FPFC_sys5_TPFC( model: model,
+                                              zones: model.getThermalZones,
+                                              chiller_type: chiller_type,
+                                              fan_coil_type: 'TPFC',
+                                              mau_cooling_type: mua_cooling_type,
+                                              hw_loop: hw_loop)
             #Save the model after btap hvac.
             BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
             result = run_the_measure(model, standard, "#{output_folder}/#{name}/sizing")
@@ -854,6 +874,15 @@ class NECB_HVAC_System_5_Test < MiniTest::Test
             BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.osm")
             assert_equal(true, result, "Failure in Standards for #{name}")
             result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
+            warnings = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='0' ").get
+            fatal = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='2' ").get
+            severe = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='1' ").get
+            if severe.size > 0 or fatal.size > 0
+              puts "#############################ERRORS########################################"
+              puts severe
+              puts fatal
+              result = false
+            end
             assert_equal(true, result, "Failure in Standards for #{name}")
           end
         end
@@ -900,7 +929,7 @@ end
           file_string['$(chiller_types_snake)'] = chiller_type.to_s.snek
           file_string['$(mua_cooling_types_snake)'] = mua_cooling_type.to_s.snek
 
-          File.open(filename, 'w') { |file| file.write(file_string) }
+          File.open(filename, 'w') {|file| file.write(file_string)}
         }
       }
     }
@@ -920,7 +949,7 @@ end
         chiller_types.each {|chiller_type|
           heating_coil_types_sys6.each {|heating_coil_type|
             fan_types.each {|fan_type|
-              filename = File.join(file_out_dir(),"test_necb_hvac_system_6_#{boiler_fueltype.snek}-#{baseboard_type.snek}-#{chiller_type.to_s.snek}-#{heating_coil_type.snek}-#{fan_type.to_s.snek}.rb")
+              filename = File.join(@@file_out_dir, "test_necb_hvac_system_6_#{boiler_fueltype.snek}-#{baseboard_type.snek}-#{chiller_type.to_s.snek}-#{heating_coil_type.snek}-#{fan_type.to_s.snek}.rb")
               puts filename if verbose
               file_string = %q{
 require_relative '../helpers/minitest_helper'
@@ -982,17 +1011,16 @@ class NECB_HVAC_System_6_Test < MiniTest::Test
                 hw_loop = nil
                 if (baseboard_type == "Hot Water") || (heating_coil_type == "Hot Water")
                   hw_loop = OpenStudio::Model::PlantLoop.new(model)
-                  BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
+                  standard.setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
                 end
-                BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys6(
-                    model,
-                    model.getThermalZones,
-                    boiler_fueltype,
-                    heating_coil_type,
-                    baseboard_type,
-                    chiller_type,
-                    fan_type,
-                    hw_loop)
+                standard.add_sys6_multi_zone_built_up_system_with_baseboard_heating(
+                    model: model,
+                    zones: model.getThermalZones,
+                    heating_coil_type: heating_coil_type,
+                    baseboard_type: baseboard_type,
+                    chiller_type: chiller_type,
+                    fan_type: fan_type,
+                    hw_loop: hw_loop)
                 #Save the model after btap hvac.
                 BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
                 result = run_the_measure( model, standard,"#{output_folder}/#{name}/sizing")
@@ -1000,6 +1028,15 @@ class NECB_HVAC_System_6_Test < MiniTest::Test
                 BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.osm")
                 assert_equal(true, result, "Failure in Standards for #{name}")
                 result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
+                warnings = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='0' ").get
+                fatal = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='2' ").get
+                severe = model.sqlFile().get().execAndReturnVectorOfString("SELECT ErrorMessage FROM Errors WHERE ErrorType='1' ").get
+                if severe.size > 0 or fatal.size > 0
+                 puts "#############################ERRORS########################################"
+                 puts severe
+                 puts fatal
+                 result = false
+                end
                 assert_equal(true, result, "Failure in Standards for #{name}")
               end
             end
@@ -1049,7 +1086,7 @@ end
               file_string['$(heating_coil_type_snake)'] = heating_coil_type.to_s.snek
               file_string['$(fan_type_snake)'] = fan_type.to_s.snek
 
-              File.open(filename, 'w') { |file| file.write(file_string) }
+              File.open(filename, 'w') {|file| file.write(file_string)}
             }
           }
         }
@@ -1057,134 +1094,6 @@ end
     }
   end
 
-  # This method is used to generate NECB HVAC system 7 test
-  def self.generate_hvac_sys7_files(verbose = true)
-    boiler_fueltypes = ["NaturalGas", "Electricity", "FuelOil#2"]
-    chiller_types = ["Scroll", "Centrifugal", "Rotary Screw", "Reciprocating"]
-    mua_cooling_types = ["Hydronic", "DX"]
-    boiler_fueltypes.each {|boiler_fueltype|
-      chiller_types.each {|chiller_type|
-        mua_cooling_types.each {|mua_cooling_type|
-          filename = File.join(file_out_dir(),"test_necb_hvac_system_7_#{boiler_fueltype.snek}-#{chiller_type.to_s.snek}-#{mua_cooling_type.snek}.rb")
-          puts filename if verbose
-          file_string = %q{
-require_relative '../helpers/minitest_helper'
-require_relative '../helpers/create_doe_prototype_helper'
-
-
-#This will run all the combinations possible with the inputs for each system.  The test will.
-#0. Save the baseline file as baseline.osm
-#1.	Add the system to the model using the hvac.rb routines and save that step as *.rb
-#2.	Run the Standards methods and save that as the *.osm.
-#3.	The name of the file will represent the combination used for that system
-#4.	Only after all the system files are created the files will then be simulated.
-#5.	Annual results will be contained in the Annual_results.csv file and failed simulations will be in the Failted.txt file.
-#
-#All output is in the test/output folder.
-#Set the switch true to run the standards in the test
-#PERFORM_STANDARDS = true
-#Set to true to run the simulations.
-#FULL_SIMULATIONS = true
-#
-#NOTE: The test will fail on the first error for each system to save time.
-#NOTE: You can use Kdiff3 three file to select the baseline, *.hvac.rb, and *.osm
-#      file for a three way diff of before sizing, and then standard application.
-#NOTE: To focus on a single system type "dont_" in front of the tests you do not want to run.
-#       EX: def dont_test_system_1()
-# Hopefully this makes is easier to debug the HVAC stuff!
-
-
-class NECB_HVAC_System_7_Test < MiniTest::Test
-  WEATHER_FILE = 'CAN_ON_Toronto.Pearson.Intl.AP.716240_CWEC2016.epw'
-  Vintages = ['NECB2011']
-
-
-  #  #Todo
-  #  #Sizing Convergence Errors when mua_cooling_types = DX
-  def test_system_7_$(boiler_fueltypes_snake)_$(chiller_types_snake)_$(mua_cooling_types_snake)()
-    boiler_fueltypes = ["$(boiler_fueltype)"]
-    chiller_types = ["$(chiller_type)"]
-    mua_cooling_types = ["$(mua_cooling_type)"]
-    output_folder = "#{File.dirname(__FILE__)}/output/test_necb_system_7"
-    name = String.new
-
-    # FileUtils.rm_rf(output_folder)
-    FileUtils::mkdir_p(output_folder)
-
-    Vintages.each do |vintage|
-      standard = Standard.build(vintage)
-      boiler_fueltypes.each do |boiler_fueltype|
-        chiller_types.each do |chiller_type|
-          mua_cooling_types.each do |mua_cooling_type|
-            name = "sys7_Boiler-#{boiler_fueltype}_ChillerType-#{chiller_type}_MuaCoolingType-#{mua_cooling_type}"
-            puts "***************************************#{name}*******************************************************\n"
-            model = BTAP::FileIO::load_osm("#{File.dirname(__FILE__)}/models/5ZoneNoHVAC.osm")
-            BTAP::Environment::WeatherFile.new(WEATHER_FILE).set_weather_file(model)
-            hw_loop = OpenStudio::Model::PlantLoop.new(model)
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::setup_hw_loop_with_components(model, hw_loop, boiler_fueltype, model.alwaysOnDiscreteSchedule)
-            BTAP::Resources::HVAC::HVACTemplates::NECB2011::assign_zones_sys2(
-                model,
-                model.getThermalZones,
-                boiler_fueltype,
-                chiller_type,
-                mua_cooling_type,
-                hw_loop)
-            #Save the model after btap hvac.
-            BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.hvacrb")
-            result = run_the_measure(model, standard, "#{output_folder}/#{name}/sizing")
-            #Save model after standards
-            BTAP::FileIO::save_osm(model, "#{output_folder}/#{name}.osm")
-            assert_equal(true, result, "Failure in Standards for #{name}")
-            result = standard.model_run_simulation_and_log_errors(model, "#{output_folder}/#{name}/")
-            assert_equal(true, result, "Failure in Standards for #{name}")
-          end
-        end
-      end
-    end
-  end
-
-  def run_the_measure(model, standard, sizing_dir)
-    # Hard-code the building vintage
-    building_type = 'FullServiceRestaurant' # Does not use this...
-    climate_zone = 'NECB HDD Method'
-
-    if !Dir.exists?(sizing_dir)
-      FileUtils.mkdir_p(sizing_dir)
-    end
-    # Perform a sizing run
-    if standard.model_run_sizing_run(model, "#{sizing_dir}/SizingRun1") == false
-      puts "could not find sizing run #{sizing_dir}/SizingRun1"
-      raise("could not find sizing run #{sizing_dir}/SizingRun1")
-      return false
-    else
-      puts "found sizing run #{sizing_dir}/SizingRun1"
-    end
-
-    # BTAP::FileIO::save_osm(model, "#{File.dirname(__FILE__)}/before.osm")
-    # need to set prototype assumptions so that HRV added
-    standard.model_apply_prototype_hvac_assumptions(model, building_type, climate_zone)
-    # Apply the HVAC efficiency standard
-    standard.model_apply_hvac_efficiency_standard(model, climate_zone)
-    #self.getCoilCoolingDXSingleSpeeds.sort.each {|obj| obj.setStandardEfficiencyAndCurves(self.template, self.standards)}
-    # BTAP::FileIO::save_osm(model, "#{File.dirname(__FILE__)}/after.osm")
-    return true
-  end
-end
-}
-          file_string['$(boiler_fueltype)'] = boiler_fueltype
-          file_string['$(chiller_type)'] = chiller_type.to_s
-          file_string['$(mua_cooling_type)'] = mua_cooling_type
-
-          file_string['$(boiler_fueltypes_snake)'] = boiler_fueltype.to_s.snek
-          file_string['$(chiller_types_snake)'] = chiller_type.to_s.snek
-          file_string['$(mua_cooling_types_snake)'] = mua_cooling_type.to_s.snek
-
-          File.open(filename, 'w') { |file| file.write(file_string) }
-        }
-      }
-    }
-
-  end
 
   # This method is used to generate DOE HVAC tests
   def self.generate_doe_hvac_files(verbose = true)
@@ -1265,7 +1174,7 @@ end
 
     hvac_systems.each {|hvac_system|
       # puts hvac_system.inspect
-      filename = File.join(file_out_dir(),"doe_test_add_hvac_systems_#{hvac_system[0].snek}-#{hvac_system[1].to_s.snek}-#{hvac_system[2].inspect.snek}-#{hvac_system[3].snek}.rb")
+      filename = File.join(@@file_out_dir, "doe_test_add_hvac_systems_#{hvac_system[0].snek}-#{hvac_system[1].to_s.snek}-#{hvac_system[2].inspect.snek}-#{hvac_system[3].snek}.rb")
       puts filename if verbose
       classname = "doe_test_add_HVAC_systems_#{hvac_system[0].snek}-#{hvac_system[1].to_s.snek}-#{hvac_system[2].inspect.snek}-#{hvac_system[3].snek}".snek.split('_').collect(&:capitalize).join
       file_string = %q{
@@ -1359,73 +1268,73 @@ end
       file_string["$(2)"] = hvac_system[2].inspect.snek
       file_string["$(3)"] = hvac_system[3].inspect.snek
 
-      File.open(filename, 'w') { |file| file.write(file_string) }
+      File.open(filename, 'w') {|file| file.write(file_string)}
     }
 
   end
 
   # This method is used to generate DOE building tests qith ASHRAE climate zones
   def self.generate_doe_building_test_files(verbose = true)
-    building_types ={
-        'FullServiceRestaurant' =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+    building_types = {
+        'FullServiceRestaurant' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                                    'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'HighriseApartment'     =>  {'templates'     => ['90.1-2004','90.1-2007','90.1-2010','90.1-2013'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A']
+        'HighriseApartment' => {'templates' => ['90.1-2004', '90.1-2007', '90.1-2010', '90.1-2013'],
+                                'climate_zones' => ['ASHRAE 169-2006-2A']
         },
-        'Hospital'              =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2004','90.1-2007','90.1-2010','90.1-2013'],
-                                     'climate_zones'  => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'Hospital' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2004', '90.1-2007', '90.1-2010', '90.1-2013'],
+                       'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'LargeHotel'            =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'LargeHotel' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                         'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'LargeOffice'           =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'LargeOffice' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                          'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'MediumOffice'          =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'MediumOffice' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                           'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'MidriseApartment'      =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'MidriseApartment' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                               'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'Outpatient'            =>  {'templates'     => ['DOE Ref 1980-2004', 'DOE Ref Pre-1980', '90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'Outpatient' => {'templates' => ['DOE Ref 1980-2004', 'DOE Ref Pre-1980', '90.1-2010'],
+                         'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'PrimarySchool'         =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004', '90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'PrimarySchool' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                            'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'QuickServiceRestaurant'=>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'QuickServiceRestaurant' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                                     'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'RetailStandalone'      =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'RetailStandalone' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                               'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'SecondarySchool'       =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004', '90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'SecondarySchool' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                              'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'SmallHotel'            =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'SmallHotel' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                         'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'SmallOffice'           =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'SmallOffice' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                          'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'RetailStripmall'       =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'RetailStripmall' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                              'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'SuperMarket'           =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2004','90.1-2007','90.1-2010','90.1-2013'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'SuperMarket' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2004', '90.1-2007', '90.1-2010', '90.1-2013'],
+                          'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         },
-        'Warehouse'             =>  {'templates'     => ['DOE Ref Pre-1980','DOE Ref 1980-2004','90.1-2010'],
-                                     'climate_zones' => ['ASHRAE 169-2006-2A','ASHRAE 169-2006-3B','ASHRAE 169-2006-4A','ASHRAE 169-2006-5A']
+        'Warehouse' => {'templates' => ['DOE Ref Pre-1980', 'DOE Ref 1980-2004', '90.1-2010'],
+                        'climate_zones' => ['ASHRAE 169-2006-2A', 'ASHRAE 169-2006-3B', 'ASHRAE 169-2006-4A', 'ASHRAE 169-2006-5A']
         }
     }
 
     building_types.keys.sort.each {|building_type|
       building_types[building_type]['templates'].each {|template|
         building_types[building_type]['climate_zones'].each {|climate_zone|
-          filename = File.join(file_out_dir(),"doe_test_bldg_#{building_type.snek}-#{template.snek}-#{climate_zone.to_s.snek}.rb")
+          filename = File.join(@@file_out_dir, "doe_test_bldg_#{building_type.snek}-#{template.snek}-#{climate_zone.to_s.snek}.rb")
           puts filename if verbose
-          method_name = "test_#{building_type}-#{template}-#{climate_zone}".gsub(' ','_').gsub('-','_').gsub('.','_')
+          method_name = "test_#{building_type}-#{template}-#{climate_zone}".gsub(' ', '_').gsub('-', '_').gsub('.', '_')
           file_string = %q{
 require_relative '../helpers/minitest_helper'
 require_relative '../helpers/create_doe_prototype_helper'
@@ -1760,12 +1669,12 @@ class Test$(building_type) < CreateDOEPrototypeBuildingTest
 
 end
 }
-          file_string.gsub!('$(method_name)',"#{method_name}")
-          file_string.gsub!('$(building_type)',"#{building_type}")
-          file_string.gsub!('$(template)',"#{template}")
-          file_string.gsub!('$(climate_zone)',"#{climate_zone}")
+          file_string.gsub!('$(method_name)', "#{method_name}")
+          file_string.gsub!('$(building_type)', "#{building_type}")
+          file_string.gsub!('$(template)', "#{template}")
+          file_string.gsub!('$(climate_zone)', "#{climate_zone}")
 
-          File.open(filename, 'w') { |file| file.write(file_string) }
+          File.open(filename, 'w') {|file| file.write(file_string)}
         }
       }
     }
@@ -1805,15 +1714,15 @@ end
 
     # puts JSON.pretty_generate(timings)
     # read the number of splits ot be done by reading the config file of CircleCI
-    procs = File.read(File.join(File.dirname(__FILE__), '..', '..' , '.circleci', 'config.yml')).match(/(?<=parallelism:\s)(\d*)/).to_s.to_i
+    procs = File.read(File.join(File.dirname(__FILE__), '..', '..', '.circleci', 'config.yml')).match(/(?<=parallelism:\s)(\d*)/).to_s.to_i
 
     # use the longes processing time algorithm to distribute
     # the load accross all the containers
-    sorted_timings = LPT.new(timings , procs).lpt_algorithm()[0]
+    sorted_timings = LPT.new(timings, procs).lpt_algorithm()[0]
 
     # write the sorted tests to each file in the `ci_test_helper` folder
-    sorted_timings.each_with_index {|files,i|
-      File.open(File.join(File.dirname(__FILE__), 'ci_test_helper' ,"#{i}.txt"), "w") do |f|
+    sorted_timings.each_with_index {|files, i|
+      File.open(File.join(File.dirname(__FILE__), 'ci_test_helper', "#{i}.txt"), "w") do |f|
         f.puts(files)
       end
     }
@@ -1848,7 +1757,6 @@ end
     generate_hvac_sys4_files(verbose)
     # generate_hvac_sys5_files() # known failure
     generate_hvac_sys6_files(verbose)
-    generate_hvac_sys7_files(verbose)
 
     # generate ODE building tests
     generate_doe_building_test_files(verbose)
@@ -1867,8 +1775,8 @@ end
 class String
   def snek
     #gsub(/::/, '/').
-    gsub(/([A-Z]+)([A-Z][a-z])/,'\1_\2').
-        gsub(/([a-z\d])([A-Z])/,'\1_\2').
+    gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2').
+        gsub(/([a-z\d])([A-Z])/, '\1_\2').
         tr('-', '_').
         gsub(/\s/, '_').
         gsub(/__+/, '_').
@@ -1877,3 +1785,5 @@ class String
         downcase
   end
 end
+
+CITestGenerator::generate(true, true)

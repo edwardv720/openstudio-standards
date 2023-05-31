@@ -2,7 +2,8 @@ require 'json'
 require 'yaml'
 require 'deep_merge'
 require 'rubyXL'
-
+#Note this script is no longer nor updated since the team now prefers to use JSON directly than excel.
+# This file is only kept for reference if it is needed.
 
 #monkey patch for recursive hash sorting.
 class Hash
@@ -57,17 +58,19 @@ class StandardsData
   end
 
 
-  def json_to_excel(data_folder = File.dirname(__FILE__), xlsx_file = 'standards.xlsx')
+  def json_to_excel(data_folder = __dir__, xlsx_file = 'standards.xlsx')
     standards_data = self.load_standards_data(data_folder)
     workbook = RubyXL::Workbook.new
     workbook.worksheets.delete(workbook['Sheet1'])
     #Write Constants Sheet.
-    self.array_of_hashes_to_excel_sheet(workbook.add_worksheet('constants'), standards_data['constants'])
-    self.array_of_hashes_to_excel_sheet(workbook.add_worksheet('formulas'), standards_data['formulas'])
+    #self.array_of_hashes_to_excel_sheet(workbook.add_worksheet('constants'), standards_data['constants'])
+    #self.array_of_hashes_to_excel_sheet(workbook.add_worksheet('formulas'), standards_data['formulas'])
     standards_data['tables'].each do |table|
-      sheet = workbook.add_worksheet(table['name'])
+      #puts table
+      puts table[0]
+      sheet = workbook.add_worksheet(table[0])
       row = 0
-      table.each do |key, value|
+      table[1].each do |key, value|
         unless key == 'table'
           sheet.add_cell(row, 0, key).change_font_bold(true)
           sheet.add_cell(row, 1, value)
@@ -76,7 +79,7 @@ class StandardsData
       end
       row += 1
       sheet.add_cell(row, 0, 'Table').change_font_bold(true)
-      self.array_of_hashes_to_excel_sheet(sheet, table['table'], (row + 1))
+      self.array_of_hashes_to_excel_sheet(sheet, table[1]['table'], (row + 1))
     end
     workbook.write(xlsx_file)
     return xlsx_file
@@ -124,7 +127,7 @@ class StandardsData
   #     OpenStudio::logFree(OpenStudio::Warn, 'openstudio.standards.Model', "Cannot find data for schedule: #{schedule_name}, will not be created.")
   #     return false #TODO change to return empty optional schedule:ruleset?
   #   end
-  def model_find_objects(hash_of_objects, search_criteria, capacity = nil)
+  def model_find_objects(table_name: , search_criteria: {}, capacity:nil)
     #    matching_objects = hash_of_objects.clone
     #    #new
     #    puts "searching"
@@ -257,9 +260,9 @@ class StandardsData
   #   'type' => 'Enclosed',
   #   }
   #   motor_properties = self.model.find_object(motors, search_criteria, 2.5)
-  def model_find_object(hash_of_objects, search_criteria, capacity = nil, date = nil)
+  def model_find_object(table_name: , search_criteria: {}, capacity: nil, date: nil)
     #    new_matching_objects = model_find_objects(self, hash_of_objects, search_criteria, capacity)
-
+    hash_of_objects = @standards_data[table_name]
     if hash_of_objects.is_a?(Hash) and hash_of_objects.key?('table')
       hash_of_objects = hash_of_objects['table']
     end
@@ -484,7 +487,7 @@ class StandardsData
         table_hash['table'] = table_array_of_hashes
         table_hash_array = {}
         table_hash_array['tables'] = [table_hash]
-        File.write("#{output_folder}/#{sheet.sheet_name}.json", JSON.pretty_generate(table_hash_array.sort_by_key(true)))
+        File.write("#{output_folder}/#{sheet.sheet_name}.json", JSON.pretty_generate({'tables':parent_hash.sort_by_key(true)}))
         output_hash = output_hash.merge(parent_hash)
       end
     end

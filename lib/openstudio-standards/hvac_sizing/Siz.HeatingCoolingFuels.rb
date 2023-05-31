@@ -11,7 +11,7 @@
 class OpenStudio::Model::Model
   
   # Get the heating fuel type of a plant loop
-  # @Todo: If no heating equipment is found, check if there's a heat exchanger,
+  # @todo If no heating equipment is found, check if there's a heat exchanger,
   # or a WaterHeater:Mixed or stratified that is connected to a heating source on the demand side
   def plant_loop_heating_fuels(plant_loop)
     fuels = []
@@ -46,7 +46,8 @@ class OpenStudio::Model::Model
         if component.heaterMaximumCapacity.empty? || component.heaterMaximumCapacity.get != 0
           # If it does, we add the heater Fuel Type
           fuels << component.heaterFuelType
-        end  # @Todo: not sure about whether it should be an elsif or not
+        end
+        # @todo not sure about whether it should be an elsif or not
         # Check the plant loop connection on the source side
         if component.secondaryPlantLoop.is_initialized
           fuels += self.plant_loop_heating_fuels(component.secondaryPlantLoop.get)
@@ -58,7 +59,8 @@ class OpenStudio::Model::Model
         if component.heaterMaximumCapacity.empty? || component.heaterMaximumCapacity.get != 0
           # If it does, we add the heater Fuel Type
           fuels << component.heaterFuelType
-        end # @Todo: not sure about whether it should be an elsif or not
+        end
+        # @todo not sure about whether it should be an elsif or not
         # Check the plant loop connection on the source side
         if component.secondaryPlantLoop.is_initialized
           fuels += self.plant_loop_heating_fuels(component.secondaryPlantLoop.get)
@@ -261,6 +263,11 @@ class OpenStudio::Model::Model
       # Get the object type
       obj_type = equipment.iddObjectType.valueName.to_s
       case obj_type
+      when 'OS_AirLooHVAC_UnitarySystem'
+        equipment = equipment.to_AirLoopHVACUnitarySystem.get
+        if equipment.heatingCoil.is_initialized
+          fuels += self.coil_heating_fuels(equipment.heatingCoil.get)
+        end
       when 'OS_AirTerminal_SingleDuct_ConstantVolume_FourPipeInduction'
         equipment = equipment.to_AirTerminalSingleDuctConstantVolumeFourPipeInduction.get
         fuels += self.coil_heating_fuels(equipment.heatingCoil)
@@ -268,7 +275,7 @@ class OpenStudio::Model::Model
         equipment = equipment.to_AirTerminalSingleDuctConstantVolumeReheat.get
         fuels += self.coil_heating_fuels(equipment.reheatCoil)  
       when 'OS_AirTerminal_SingleDuct_InletSideMixer'
-        # TODO
+        # @todo complete method
       when 'OS_AirTerminal_SingleDuct_ParallelPIUReheat'
         equipment = equipment.to_AirTerminalSingleDuctParallelPIUReheat.get
         fuels += self.coil_heating_fuels(equipment.reheatCoil) 
@@ -295,7 +302,13 @@ class OpenStudio::Model::Model
         fuels += self.coil_heating_fuels(equipment.heatingCoil) 
       when 'OS_ZoneHVAC_LowTemperatureRadiant_VariableFlow'
         equipment = equipment.to_ZoneHVACLowTempRadiantVarFlow.get
-        fuels += self.coil_heating_fuels(equipment.heatingCoil) 
+        if equipment.model.version < OpenStudio::VersionString.new('3.2.0')
+          fuels += self.coil_heating_fuels(equipment.heatingCoil)
+        else
+          if equipment.heatingCoil.is_initialized
+            fuels += self.coil_heating_fuels(equipment.heatingCoil.get)
+          end
+        end
       when 'OS_ZoneHVAC_UnitHeater'
         equipment = equipment.to_ZoneHVACUnitHeater.get
         fuels += self.coil_heating_fuels(equipment.heatingCoil) 
@@ -342,7 +355,12 @@ class OpenStudio::Model::Model
     zone.equipment.each do |equipment|
       # Get the object type
       obj_type = equipment.iddObjectType.valueName.to_s
-      case obj_type    
+      case obj_type
+      when 'OS_AirLoopHVAC_UnitarySystem'
+        equipment = equipment.to_AirLoopHVACUnitarySystem.get
+        if equipment.coolingCoil.is_initialized
+          fuels += self.coil_cooling_fuels(equipment.coolingCoil.get)
+        end
       when 'OS_AirTerminal_SingleDuct_ConstantVolume_CooledBeam'
         equipment = equipment.to_AirTerminalSingleDuctConstantVolumeCooledBeam.get
         fuels += self.coil_cooling_fuels(equipment.coilCoolingCooledBeam)
@@ -359,7 +377,13 @@ class OpenStudio::Model::Model
         fuels += self.coil_cooling_fuels(equipment.coolingCoil)
       when 'OS_ZoneHVAC_LowTemperatureRadiant_VariableFlow'
         equipment = equipment.to_ZoneHVACLowTempRadiantVarFlow.get
-        fuels += self.coil_cooling_fuels(equipment.coolingCoil)
+        if equipment.model.version < OpenStudio::VersionString.new('3.2.0')
+          fuels += self.coil_cooling_fuels(equipment.coolingCoil)
+        else
+          if equipment.coolingCoil.is_initialized
+            fuels += self.coil_cooling_fuels(equipment.coolingCoil.get)
+          end
+        end
       when 'OS_Refrigeration_AirChiller'
         fuels << 'Electricity'
       when 'OS_ZoneHVAC_IdealLoadsAirSystem'

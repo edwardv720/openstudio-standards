@@ -3,7 +3,8 @@ class Standard
 
   # Applies the standard efficiency ratings and typical performance curves to this object.
   #
-  # @return [Bool] true if successful, false if not
+  # @param coil_heating_dx_multi_speed [OpenStudio::Model::CoilHeatingDXMultiSpeed] coil heating dx multi speed object
+  # @return [Bool] returns true if successful, false if not
   def coil_heating_dx_multi_speed_apply_efficiency_and_curves(coil_heating_dx_multi_speed, sql_db_vars_map)
     successfully_set_all_properties = true
 
@@ -26,11 +27,12 @@ class Standard
                                else
                                  'All Other'
                                end
-        end # TODO: Add other unitary systems
+        end
+        # @todo Add other unitary systems
       end
     end
 
-    # TODO: Standards - add split system vs single package to model
+    # @todo Standards - add split system vs single package to model
     # For now, assume single package
     subcategory = 'Single Package'
     search_criteria['subcategory'] = subcategory
@@ -163,7 +165,7 @@ class Standard
     # If specified as SEER
     unless hp_props['minimum_seasonal_energy_efficiency_ratio'].nil?
       min_seer = hp_props['minimum_seasonal_energy_efficiency_ratio']
-      cop = seer_to_cop(min_seer)
+      cop = seer_to_cop_cooling_with_fan(min_seer)
       coil_heating_dx_multi_speed.setName("#{coil_heating_dx_multi_speed.name} #{capacity_kbtu_per_hr.round}kBtu/hr #{min_seer}SEER")
       OpenStudio.logFree(OpenStudio::Info, 'openstudio.standards.CoilHeatingDXMultiSpeed', "For #{template}: #{coil_heating_dx_multi_speed.name}: #{suppl_heating_type} #{subcategory} Capacity = #{capacity_kbtu_per_hr.round}kBtu/hr; SEER = #{min_seer}")
     end
@@ -177,10 +179,11 @@ class Standard
     end
 
     # Set the efficiency values
-    unless cop.nil?
-      htg_stages.each do |istage|
-        istage.setGrossRatedHeatingCOP(cop)
-      end
+    return false if cop.nil?
+
+    htg_stages.each do |istage|
+      istage.setGrossRatedHeatingCOP(cop)
     end
+    return true
   end
 end

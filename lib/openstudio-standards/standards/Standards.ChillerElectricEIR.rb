@@ -1,9 +1,9 @@
-
 class Standard
   # @!group ChillerElectricEIR
 
   # Finds the search criteria
   #
+  # @param chiller_electric_eir [OpenStudio::Model::ChillerElectricEIR] chiller object
   # @return [hash] has for search criteria to be used for find object
   def chiller_electric_eir_find_search_criteria(chiller_electric_eir)
     search_criteria = {}
@@ -19,17 +19,21 @@ class Standard
 
     search_criteria['cooling_type'] = cooling_type
 
-    # TODO: Standards replace this with a mechanism to store this
+    # @todo Standards replace this with a mechanism to store this
     # data in the chiller object itself.
     # For now, retrieve the condenser type from the name
     name = chiller_electric_eir.name.get
     condenser_type = nil
     compressor_type = nil
+    absorption_type = nil
     if cooling_type == 'AirCooled'
       if name.include?('WithCondenser')
         condenser_type = 'WithCondenser'
       elsif name.include?('WithoutCondenser')
         condenser_type = 'WithoutCondenser'
+      else
+        # default to 'WithCondenser' if not an absorption chiller
+        condenser_type = 'WithCondenser' if absorption_type.nil?
       end
     elsif cooling_type == 'WaterCooled'
       if name.include?('Reciprocating')
@@ -54,17 +58,16 @@ class Standard
 
   # Finds capacity in W
   #
+  # @param chiller_electric_eir [OpenStudio::Model::ChillerElectricEIR] chiller object
   # @return [Double] capacity in W to be used for find object
   def chiller_electric_eir_find_capacity(chiller_electric_eir)
-    capacity_w = nil
     if chiller_electric_eir.referenceCapacity.is_initialized
       capacity_w = chiller_electric_eir.referenceCapacity.get
     elsif chiller_electric_eir.autosizedReferenceCapacity.is_initialized
       capacity_w = chiller_electric_eir.autosizedReferenceCapacity.get
     else
       OpenStudio.logFree(OpenStudio::Warn, 'openstudio.standards.ChillerElectricEIR', "For #{chiller_electric_eir.name} capacity is not available, cannot apply efficiency standard.")
-      successfully_set_all_properties = false
-      return successfully_set_all_properties
+      return false
     end
 
     return capacity_w
@@ -72,21 +75,24 @@ class Standard
 
   # Finds lookup object in standards and return full load efficiency
   #
+  # @param chiller_electric_eir [OpenStudio::Model::ChillerElectricEIR] chiller object
   # @return [Double] full load efficiency (COP)
   def chiller_electric_eir_standard_minimum_full_load_efficiency(chiller_electric_eir)
     # Get the chiller properties
     search_criteria = chiller_electric_eir_find_search_criteria(chiller_electric_eir)
-    capacity_tons = OpenStudio.convert(chiller_electric_eir_find_capacity(chiller_electric_eir), 'W', 'ton').get
+    capacity_w = chiller_electric_eir_find_capacity(chiller_electric_eir)
+    return nil unless capacity_w
+
+    capacity_tons = OpenStudio.convert(capacity_w, 'W', 'ton').get
     chlr_props = model_find_object(standards_data['chillers'], search_criteria, capacity_tons, Date.today)
 
-    # lookup the efficiency value
-    kw_per_ton = nil
-    cop = nil
-    if chlr_props['minimum_full_load_efficiency']
+    if chlr_props.nil? || !chlr_props['minimum_full_load_efficiency']
+      OpenStudio.logFree(OpenStudio::Warn, 'openstudio.standards.ChillerElectricEIR', "For #{chiller_electric_eir.name}, cannot find minimum full load efficiency.")
+      return nil
+    else
+      # lookup the efficiency value
       kw_per_ton = chlr_props['minimum_full_load_efficiency']
       cop = kw_per_ton_to_cop(kw_per_ton)
-    else
-      OpenStudio.logFree(OpenStudio::Warn, 'openstudio.standards.ChillerElectricEIR', "For #{chiller_electric_eir.name}, cannot find minimum full load efficiency.")
     end
 
     return cop
@@ -94,7 +100,10 @@ class Standard
 
   # Applies the standard efficiency ratings and typical performance curves to this object.
   #
-  # @return [Bool] true if successful, false if not
+  # @param chiller_electric_eir [OpenStudio::Model::ChillerElectricEIR] chiller object
+  # @param clg_tower_objs [Array] cooling towers, currently unused
+  # @return [Bool] returns true if successful, false if not
+  # @todo remove clg_tower_objs parameter if unused
   def chiller_electric_eir_apply_efficiency_and_curves(chiller_electric_eir, clg_tower_objs)
     chillers = standards_data['chillers']
 
@@ -161,7 +170,7 @@ class Standard
 
     # Append the name with size and kw/ton
     chiller_electric_eir.setName("#{chiller_electric_eir.name} #{capacity_tons.round}tons #{kw_per_ton.round(1)}kW/ton")
-    OpenStudio.logFree(OpenStudio::Info, 'openstudio.model.ChillerElectricEIR', "For #{template}: #{chiller_electric_eir.name}: #{cooling_type} #{condenser_type} #{compressor_type} Capacity = #{capacity_tons.round}tons; COP = #{cop.round(1)} (#{kw_per_ton.round(1)}kW/ton)")
+    OpenStudio.logFree(OpenStudio::Info, 'openstudio.standards.ChillerElectricEIR', "For #{template}: #{chiller_electric_eir.name}: #{cooling_type} #{condenser_type} #{compressor_type} Capacity = #{capacity_tons.round}tons; COP = #{cop.round(1)} (#{kw_per_ton.round(1)}kW/ton)")
 
     return successfully_set_all_properties
   end
