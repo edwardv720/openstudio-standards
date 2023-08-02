@@ -295,8 +295,18 @@ class NECB2011
       return false
     end
 
-    # Create an ERV
-
+    # Create an ERV unless there's an existing one
+    # Returns true if there is an existing ERV in this air_loop_hvac
+    air_loop_hvac.supplyComponents.each do |supply_comp|
+      if supply_comp.to_AirLoopHVACOutdoorAirSystem.is_initialized
+        supply_comp.to_AirLoopHVACOutdoorAirSystem.get.components.each do |oa_comp|
+          if oa_comp.to_HeatExchangerAirToAirSensibleAndLatent.is_initialized
+            return true
+          end
+        end
+      end
+    end
+    # Proceed with creating a new ERV
     erv = OpenStudio::Model::HeatExchangerAirToAirSensibleAndLatent.new(air_loop_hvac.model)
     erv.setName("#{air_loop_hvac.name} ERV")
     erv.setSensibleEffectivenessat100HeatingAirFlow(0.5)
