@@ -5252,7 +5252,7 @@
           "ventilation_primary_space_type": "Space Function",
           "ventilation_secondary_space_type": "Dwelling Unit(s)",
           "ventilation_per_area": 0.06,
-          "ventilation_per_person": 0,
+          "ventilation_per_person": 5,
           "ventilation_air_changes": 0,
           "minimum_total_air_changes": null,
           "occupancy_per_area": 1.55,
@@ -5295,7 +5295,7 @@
           "necb_hvac_system_selection_type": "Residential/Accomodation Area",
           "necb_schedule_type": "G",
           "notes": null,
-          "ventilation_occupancy_rate_people_per_1000ft2": 0,
+          "ventilation_occupancy_rate_people_per_1000ft2": 3.717472118959108,
           "ventilation_occupancy_standard": "ASHRAE 62.1-2010 Occupancy (See NECB2011 ASHRAE Space Types)",
           "ventilation_standard_space_type": "Living areas (Table 2, assume 10 ft ceiling)"
         },
