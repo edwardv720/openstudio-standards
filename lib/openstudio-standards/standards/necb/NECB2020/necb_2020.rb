@@ -83,26 +83,28 @@ class NECB2020 < NECB2017
 	
     # Calculate total area of above and below grade envelope area in the entire model.
     totalAreaBuildingEnvelope = 0.0
-    totalAboveGradeArea = 0.0
+    totalAboveGradeWallArea = 0.0
+
+    space.model.getSpaces.each do |modelspace|
+      multiplier = modelspace.multiplier
+      modelspace.surfaces.each do |surface|
+      if surface.outsideBoundaryCondition == "Outdoors" then
+        area = surface.grossArea * multiplier
+        totalAreaBuildingEnvelope += area
+        if surface.surfaceType == 'Wall'
+          totalAboveGradeWallArea += area
+        end
+      elsif surface.outsideBoundaryCondition.downcase == "ground" then
+        area = surface.grossArea * multiplier
+        totalAreaBuildingEnvelope += area
+      end
+      end
+    end
 	
-	space.model.getSpaces.each do |modelspace|
-	  multiplier = modelspace.multiplier
-	  modelspace.surfaces.each do |surface|
-	    if surface.outsideBoundaryCondition == "Outdoors" then
-		  area = surface.grossArea * multiplier
-          totalAreaBuildingEnvelope += area
-          totalAboveGradeArea += area
-		elsif surface.outsideBoundaryCondition == "Ground" then
-		  area = surface.grossArea * multiplier
-          totalAreaBuildingEnvelope += area
-		end
-	  end
-	end
-	
-	# Get infiltration rate from standards and convert to value at 5 Pa applied to all above grade surfaces.
+	  # Get infiltration rate from standards and convert to value at 5 Pa applied to all above grade surfaces.
     infil_75Pa_all_surf = self.get_standards_constant('infiltration_rate_m3_per_s_per_m2')
-    infil_5Pa_above_grade = infil_75Pa_all_surf * ((5.0 / 75.0) ** (0.6)) * totalAreaBuildingEnvelope / totalAboveGradeArea
-    OpenStudio.logFree(OpenStudio::Debug, 'openstudio.Standards.Space', "For #{space.name}, adj infil = #{infil_5Pa_above_grade.round(5)} m^3/s*m^2.")
+    infil_5Pa_above_grade_wall = infil_75Pa_all_surf * ((5.0 / 75.0) ** (0.6)) * totalAreaBuildingEnvelope / totalAboveGradeWallArea
+    OpenStudio.logFree(OpenStudio::Debug, 'openstudio.Standards.Space', "For #{space.name}, adj infil = #{infil_5Pa_above_grade_wall.round(5)} m^3/s*m^2.")
 
     # Get any infiltration schedule already assigned to this space or its space type
     # If not, the always on schedule will be applied.
@@ -131,7 +133,7 @@ class NECB2020 < NECB2017
     # Create an infiltration rate object for this space.
     infiltration = OpenStudio::Model::SpaceInfiltrationDesignFlowRate.new(space.model)
     infiltration.setName("#{space.name} Infiltration")
-    infiltration.setFlowperExteriorSurfaceArea(infil_5Pa_above_grade)
+    infiltration.setFlowperExteriorWallArea(infil_5Pa_above_grade_wall)
     infiltration.setSchedule(infil_sch)
     infiltration.setConstantTermCoefficient(self.get_standards_constant('infiltration_constant_term_coefficient'))
     infiltration.setTemperatureTermCoefficient(self.get_standards_constant('infiltration_constant_term_coefficient'))

@@ -644,7 +644,6 @@ class NECB2011 < Standard
                      infiltration_scale: nil)
     raise('validation of model failed.') unless validate_initial_model(model)
 
-    model_apply_infiltration_standard(model)
     ecm = ECMS.new
     ecm.scale_infiltration_loads(model: model, scale: infiltration_scale)
     model.getInsideSurfaceConvectionAlgorithm.setAlgorithm('TARP')
@@ -665,6 +664,7 @@ class NECB2011 < Standard
                                            glass_door_solar_trans: glass_door_solar_trans,
                                            fixed_wind_solar_trans: fixed_wind_solar_trans,
                                            skylight_solar_trans: skylight_solar_trans)
+    model_apply_infiltration_standard(model)                                           
     model_create_thermal_zones(model, @space_multiplier_map)
   end
 
